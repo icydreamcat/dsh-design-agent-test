@@ -16,16 +16,15 @@
  * distinction matters: a test that only asserted "the canvas got smaller" passes
  * against the broken version. Every case below asserts the ratio is preserved.
  *
- * WHY IT WENT UNNOTICED
- * ---------------------
- * The render report and `verifyScene` both came back EMPTY — 0 errors, 0 warnings —
- * for a picture squashed to a quarter of its width, and `design_render` had never
- * been called with a `scale` in any recorded session. A clean report is not evidence
- * that this path works, which is why the contract is pinned here instead.
+ * WHY IT NEEDS PINNING
+ * --------------------
+ * The render report came back EMPTY — 0 errors, 0 warnings — for a picture squashed to a
+ * quarter of its width. A clean report is not evidence that this path works, because the
+ * report describes the layers and the scaling happens above them. So the contract is pinned
+ * here rather than inferred from a report.
  *
  * Run: node test/scale.mjs
  */
-import { readFileSync } from 'node:fs'
 import { scaleScene } from '../src/scale.mjs'
 
 let failed = 0
@@ -175,19 +174,53 @@ console.log('\n=== 4. edges ===')
   check('a negative scale is refused', threw, threw ? 'threw' : 'accepted')
 }
 
-// ── 5. against the real poster scene the defect was found on ─────────────────
-console.log('\n=== 5. the actual scene the defect was found on ===')
+// ── 5. the same contract on a LAYERED scene, not just a bare canvas ──────────
+//
+// Section 1 scales `{ canvas, layers: [] }`, which proves the canvas arithmetic and
+// nothing about the walk. The walk is where the defect lived, so this section scales a
+// scene with every length spelling the engine accepts — fraction, pixel, a nested
+// group, and an effect parameter — and asserts that each is rewritten exactly once. A
+// length scaled twice is the failure mode this whole file exists for, and it is
+// invisible on an empty layer list.
+console.log('\n=== 5. every length spelling is rewritten exactly once ===')
 {
-  const real = JSON.parse(readFileSync(new URL('../scenes/poster-a-flat.json', import.meta.url), 'utf8'))
-  const original = { ...real.canvas }
-  scaleScene(real, 0.25)
-  const wantRatio = original.width / original.height
-  const gotRatio = real.canvas.width / real.canvas.height
-  check('poster-a-flat keeps its 16:9-ish proportion at 0.25',
-    Math.abs(gotRatio - wantRatio) / wantRatio < 0.01,
-    `${original.width}x${original.height} -> ${real.canvas.width}x${real.canvas.height} (ratio ${gotRatio.toFixed(3)})`)
-  check('and it is the intended size', real.canvas.width === 600 && real.canvas.height === 338,
-    `${real.canvas.width}x${real.canvas.height}`)
+  const layered = () => ({
+    canvas: { width: 2400, height: 1350 },
+    ground: '#F1F1EC',
+    layers: [
+      // fraction: scale-invariant, must come back untouched
+      { id: 'a', shape: 'rect', x: 0, y: 0, w: 1, h: 1, paint: '#F1F1EC' },
+      // absolute: must end at exactly half
+      { id: 'b', shape: 'rect', x: 96, y: 120, w: 800, h: 400, paint: '#20241C' },
+      { id: 'c', shape: 'text', x: 96, y: 600, w: 600, text: 'x', size: 64, font: 'Grotesk', color: '#20241C' },
+      {
+        id: 'd',
+        shape: 'group',
+        x: 200,
+        y: 200,
+        layers: [
+          { id: 'd1', shape: 'ellipse', x: 40, y: 40, w: 160, h: 160, paint: '#8CA33C' },
+          { id: 'd2', shape: 'line', x1: 40, y1: 40, x2: 200, y2: 200, stroke: '#20241C', width: 3 },
+        ],
+      },
+      { id: 'e', shape: 'rect', x: 300, y: 300, w: 400, h: 200, paint: '#DED8C8', effects: [{ type: 'gaussian', radius: 20 }] },
+    ],
+  })
+
+  const sc = layered()
+  scaleScene(sc, 0.5)
+  const byId = (id) => {
+    const walk = (ls) => { for (const l of ls) { if (l.id === id) return l; if (Array.isArray(l.layers)) { const r = walk(l.layers); if (r) return r } } }
+    return walk(sc.layers)
+  }
+  check('canvas halved', sc.canvas.width === 1200 && sc.canvas.height === 675, `${sc.canvas.width}x${sc.canvas.height}`)
+  check('a fractional w is left alone', byId('a').w === 1, `w=${byId('a').w}`)
+  check('a pixel x is halved exactly once', byId('b').x === 48, `x=${byId('b').x} (want 48, twice would be 24)`)
+  check('a pixel w is halved exactly once', byId('b').w === 400, `w=${byId('b').w} (want 400)`)
+  check('text size follows the scale once', byId('c').size === 32, `size=${byId('c').size} (want 32)`)
+  check('a nested group child is reached', byId('d1').w === 80, `w=${byId('d1').w} (want 80)`)
+  check('a nested line endpoint is reached', byId('d2').x2 === 100, `x2=${byId('d2').x2} (want 100)`)
+  check('a stroke width follows the scale', byId('d2').width === 1.5, `width=${byId('d2').width} (want 1.5)`)
 }
 
 console.log(`\n=== ${checks - failed}/${checks} checks passed ===`)

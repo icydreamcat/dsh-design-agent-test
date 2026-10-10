@@ -160,7 +160,7 @@ The same complaint, in its most extreme form: *"the whole image gets uglier the 
 That is the signature of tuning: every local fix is locally correct and the whole drifts.
 
 **Rule:** when you notice you are adjusting values to make something read better, stop and ask which
-of the declared decisions is wrong. If nothing in `gates` is wrong, you have not found the problem
+of the declared decisions is wrong. If none of them is wrong, you have not found the problem
 yet — you have found its symptom.
 
 ## Measure to falsify, never to confirm

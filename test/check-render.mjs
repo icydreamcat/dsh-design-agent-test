@@ -13,7 +13,7 @@
  *      untouched and the ground was untouched; only the glyph changed, and no check that compared
  *      those two could see it.
  *
- * So there are two claims under test, and both are asserted against pixels whose correct verdict
+ * So there are two claims under test, and both are asserted against pixels whose correct readability
  * is known BEFORE the tool runs:
  *
  *   - a design that reads, reads: light type on a dark field is `ok`, not a false alarm. The
@@ -82,13 +82,13 @@ const bars = (x, y, w, h, n = 6) => {
   return out
 }
 
-// ── 1. the two readings, on pixels whose verdict is known ───────────────────
+// ── 1. the two readings, on pixels whose readability is known ───────────────────
 
 console.log('\nlight type on a dark field — must read as readable')
 {
   const image = paint('#101821', '#EAF2FA', bars(10, 10, 280, 100))
   const m = measureZone({ label: 'light-on-dark', box: [0, 0, 300, 120], ink: '#EAF2FA', fontSize: 44 }, image)
-  check('verdict is ok', m.verdict === 'ok', `got ${m.verdict} at ${m.onscreen.toFixed(2)}:1`)
+  check('readability is ok', m.readability === 'ok', `got ${m.readability} at ${m.onscreen.toFixed(2)}:1`)
   check('on-screen ink is the ink, not the ground', m.inkHex.toUpperCase() === '#EAF2FA', `got ${m.inkHex}`)
   check('on-screen ground is the ground', m.groundHex.toUpperCase() === '#101821', `got ${m.groundHex}`)
   check('contrast is the real ratio (≈15.8:1)', Math.abs(m.onscreen - 15.8) < 0.6, `${m.onscreen.toFixed(2)}:1`)
@@ -97,11 +97,11 @@ console.log('\nlight type on a dark field — must read as readable')
     m.divergence === null ? 'no divergence reported' : `${m.divergence.factor}×`)
 }
 
-console.log('\nmid-grey type on a dark field — must read as failing')
+console.log('\nmid-grey type on a dark field — must read as LOW')
 {
   const image = paint('#101821', '#3E4750', bars(10, 10, 280, 100))
   const m = measureZone({ label: 'grey-on-dark', box: [0, 0, 300, 120], ink: '#3E4750', fontSize: 44 }, image)
-  check('verdict is LOW', m.verdict === 'LOW', `got ${m.verdict} at ${m.onscreen.toFixed(2)}:1`)
+  check('readability is LOW', m.readability === 'LOW', `got ${m.readability} at ${m.onscreen.toFixed(2)}:1`)
   check('contrast is under 2:1', m.onscreen < 2, `${m.onscreen.toFixed(2)}:1`)
   check('the surface is reported as unable to hold the type', m.weakGroundShare > 0.9, `${m.weakGroundShare}`)
 }
@@ -112,7 +112,7 @@ console.log('\na ground this ink cannot sit on at all — the inverted case')
   // failing on the pixels, without needing any declaration to say so.
   const image = paint('#33393F', '#101821', bars(10, 10, 280, 100))
   const m = measureZone({ label: 'dark-on-dark', box: [0, 0, 300, 120], ink: null, fontSize: 44 }, image)
-  check('verdict is LOW', m.verdict === 'LOW', `got ${m.verdict} at ${m.onscreen.toFixed(2)}:1`)
+  check('readability is LOW', m.readability === 'LOW', `got ${m.readability} at ${m.onscreen.toFixed(2)}:1`)
   check('no declaration needed for the on-screen reading', m.divergence === null)
 }
 
@@ -122,8 +122,8 @@ console.log('\nan ink declared but absent from the picture')
   // into a plausible-looking ratio is how a missing layer survives a check.
   const image = paint('#101821', '#EAF2FA', bars(10, 10, 280, 100))
   const m = measureZone({ label: 'missing-ink', box: [0, 0, 300, 120], ink: '#FF0000', fontSize: 44 }, image)
-  check('reported, not averaged', m.verdict === 'unresolved' || m.divergence !== null,
-    `verdict ${m.verdict}`)
+  check('reported, not averaged', m.readability === 'unresolved' || m.divergence !== null,
+    `readability ${m.readability}`)
   check('the report names the ground it did find', typeof m.groundHex === 'string' && m.groundHex.startsWith('#'))
 }
 
@@ -131,7 +131,7 @@ console.log('\na zone with no glyph in it')
 {
   const image = paint('#101821', '#EAF2FA', [])
   const m = measureZone({ label: 'blank', box: [0, 0, 300, 120], ink: '#EAF2FA', fontSize: 44 }, image)
-  check('not reported as passing', m.verdict !== 'ok', `verdict ${m.verdict}`)
+  check('not reported as passing', m.readability !== 'ok', `readability ${m.readability}`)
 }
 
 // ── 2. the render, and the report that has to describe it ───────────────────
@@ -205,10 +205,10 @@ if (rendered !== null) {
   if (parsed !== null) {
     const by = Object.fromEntries(parsed.zones.map((z) => [z.label, z]))
     check('three zones measured', parsed.measured === 3, `${parsed.measured}`)
-    check('the readable zone is ok', by.pass !== undefined && by.pass.verdict === 'ok',
-      by.pass === undefined ? 'missing' : by.pass.verdict)
-    check('the grey zone fails', by.low !== undefined && by.low.verdict === 'LOW',
-      by.low === undefined ? 'missing' : by.low.verdict)
+    check('the readable zone is ok', by.pass !== undefined && by.pass.readability === 'ok',
+      by.pass === undefined ? 'missing' : by.pass.readability)
+    check('the grey zone measures LOW', by.low !== undefined && by.low.readability === 'LOW',
+      by.low === undefined ? 'missing' : by.low.readability)
     check('the readable zones measure as readable',
       by.pass.onscreenRatio > 10 && by.outlined !== undefined && by.outlined.onscreenRatio > 10,
       `pass ${by.pass.onscreenRatio}:1, outlined ${by.outlined === undefined ? '—' : by.outlined.onscreenRatio + ':1'}`)
@@ -222,7 +222,7 @@ if (rendered !== null) {
       by.outlined.divergence.screenInk.toUpperCase() === by.outlined.ink.toUpperCase(),
       by.outlined === undefined || by.outlined.divergence === null ? '—' : `${by.outlined.divergence.screenInk} vs ink ${by.outlined.ink}`)
     check('the payload states its own limits', Array.isArray(parsed.limits) && parsed.limits.length >= 2)
-    check('exit status is non-zero when a zone fails', proc.status === 1, `exit ${proc.status}`)
+    check('exit status is non-zero when a zone measures LOW', proc.status === 1, `exit ${proc.status}`)
   }
 
   // A delivery gate needs a clean run to be a clean run: hide the failing zone and the same

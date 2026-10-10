@@ -1,55 +1,48 @@
 /**
- * check-render — read the text zones of a DELIVERED image and report whether they still read.
+ * check-render — read the text zones of a rendered image and report whether they still read.
  *
  * Usage: node tools/check-render.mjs <png> [--report FILE] [--zones FILE] [--draw OUT.png] [--json]
  *
- * WHY THIS EXISTS, AND WHY IT IS NOT verifyScene
- * ---------------------------------------------
- * Two facts, both measured, put this file here.
+ * WHY THIS EXISTS
+ * ---------------
+ * A scene cannot answer this question about itself. It knows a text layer's declared colour and
+ * the page's declared `ground`; it never sees what is actually underneath the letters. Those are
+ * different questions, and only the second one is the question a reader experiences.
  *
- * 1. The scene cannot answer this question. `verifyScene` sees a text layer's declared colour
- *    and the page's declared `ground`; it never sees what is actually underneath the letters.
- *    Its own comment says so, and works around it with an allowance list. That is the right
- *    thing for a static check to do, and it means the static check is structurally unable to
- *    report the thing a reader experiences.
+ * Measuring an earlier stage measures a different image, too. A poster measured on its hero
+ * composite — the state BEFORE the region duotones, the screen and the dark field were added —
+ * reported every zone at 8.4:1. The same zones on the rendered PNG were 3.7:1 and 3.9:1. The
+ * measurement was not wrong; the object of measurement was.
  *
- * 2. Measuring an earlier stage measures the wrong image. A poster was measured on its hero
- *    composite — the state BEFORE the region duotones, the screen and the dark field were
- *    added. Every "8.4:1" reported there described a picture that was never delivered. On the
- *    delivered PNG the same zones were 3.7:1 and 3.9:1. The measurement was not wrong; the
- *    object of measurement was.
+ * So: zones come from the rendered image, and the numbers come from its pixels.
  *
- * So: zones come from the delivered image, and the numbers come from its pixels.
- *
- * THE BLIND SPOT THIS IS BUILT AROUND
- * -----------------------------------
- * The worst failure in that project's history was text that measured 80 layers "all ≥ 4.5:1"
- * — the guard was green — while the letters on screen were grey.
- *
- * The cause is a category error, and it is easy to repeat: an `outerGlow` with `blend: normal`
- * draws a dark ring OVER the strokes. It does not change the declared ink colour. It does not
- * change the ground. It changes the GLYPH. A check that compares declared ink against measured
- * ground cannot see it, because both of its inputs are untouched.
+ * THE CASE THAT DEFEATS A DECLARED-VALUE CHECK
+ * --------------------------------------------
+ * Text that measures "all ≥ 4.5:1" against its declared ink and ground, while the letters on
+ * screen are grey. The cause is easy to repeat: an `outerGlow` with `blend: normal` draws a dark
+ * ring OVER the strokes. It does not change the declared ink colour. It does not change the
+ * ground. It changes the GLYPH. A check comparing declared ink against measured ground cannot see
+ * it, because both of its inputs are untouched.
  *
  * Therefore every zone here is measured twice:
  *
  *   declared  the ink string the scene asked for, against the measured ground
  *   onscreen   the two extremes actually present in the zone's pixels, against each other
  *
- * and when the two disagree, that disagreement is the report. The tool does not need to know
- * that a glow was the cause: it reports `declared vs screen`, and a divergence is visible even
- * when the declared-ink path says everything is fine.
+ * and when the two disagree, that disagreement is the report. The tool does not need to know that
+ * a glow was the cause: it reports `declared vs screen`, and a divergence is visible even when
+ * the declared-ink path says everything is fine.
  *
  * WHAT IT DOES NOT DO
  * -------------------
  * It does not judge the design. A zone can be low-contrast on purpose — a watermark, a ghosted
- * figure, type that is meant to sit just under the threshold of legibility. The tool reports
- * the ratio and the share of ground that falls below it. The decision stays with a person, and
- * the one thing this tool must never become is a rule that forces a layout to change.
+ * figure, type meant to sit just under the threshold of legibility. The tool reports the ratio
+ * and the share of ground that falls below it. The decision stays with a person; this is a
+ * measurement, not a rule.
  *
- * It also cannot judge what it cannot measure. Ghosted type, letterforms broken by an effect,
- * or a fold in the composition are not ratio questions. That limit is stated in the output
- * rather than hidden, because a green report from this tool means less than it looks like.
+ * It also cannot judge what it cannot measure. Ghosted type, letterforms broken by an effect, or
+ * a fold in the composition are not ratio questions. That limit is stated in the output rather
+ * than hidden, because a clean report from this tool means less than it looks like.
  */
 import { readFileSync, writeFileSync } from 'node:fs'
 import { dirname, isAbsolute, join, resolve } from 'node:path'
@@ -117,7 +110,7 @@ function zonesFromFile(path) {
 }
 
 /**
- * Zones derived from the render report — the delivered image's own record of what it drew.
+ * Zones derived from the render report — the rendered image's own record of what it drew.
  *
  * This is what makes the tool universal. The zone list used to be nine hard-coded rectangles
  * belonging to one poster at one size; geometry now comes from the report, so the same command
@@ -180,7 +173,7 @@ function zonesFromReport(path) {
 }
 
 /**
- * Measure one zone from the delivered pixels.
+ * Measure one zone from the rendered pixels.
  *
  * THE METHOD, AND THE TWO IT REPLACED
  * -----------------------------------
@@ -208,9 +201,9 @@ function zonesFromReport(path) {
 export function measureZone(zone, image, debug = false) {
   const sample = sampleZone(zone, image)
   const base = { ...zone, samples: sample.samples }
-  if (sample.empty) return { ...base, verdict: 'empty', note: 'no opaque pixels in this region' }
+  if (sample.empty) return { ...base, readability: 'empty', note: 'no opaque pixels in this region' }
   if (sample.samples < 32) {
-    return { ...base, verdict: 'unresolved', note: `only ${sample.samples} sampled pixels — too few to resolve glyph from ground` }
+    return { ...base, readability: 'unresolved', note: `only ${sample.samples} sampled pixels — too few to resolve glyph from ground` }
   }
 
   // ── seed the ground from the border, and the ink from the declaration if there is one ──
@@ -245,12 +238,12 @@ export function measureZone(zone, image, debug = false) {
   const groundCluster = clusters.b
   const inkShare = inkCluster.count / sample.samples
 
-  // A glyph that is not in the picture is the failure this tool exists to catch, so it is
+  // A glyph that is not in the picture is what this tool exists to catch, so it is
   // reported as such rather than being averaged into a plausible-looking number.
   if (inkShare < 0.002) {
     return {
       ...base,
-      verdict: 'unresolved',
+      readability: 'unresolved',
       groundHex: rgbHex(groundCluster.mean),
       note: 'the declared ink is absent from this region — no pixel comes near it',
     }
@@ -313,7 +306,7 @@ export function measureZone(zone, image, debug = false) {
 
   // The ground a reader actually sees is the SURFACE, which is the modal tone of the ground
   // class, not its extreme. A dark halo painted around light letters — an outerGlow in a dark
-  // colour, which is the failure this tool was written for — sits between the letters and the
+  // colour, which is what this tool was written for — sits between the letters and the
   // field, so it is a minority tone inside the ground class while remaining exactly the thing
   // that has to be reported. Its own share of the class is reported alongside, because "12% of
   // this zone is darker than the declared field" is a finding.
@@ -323,7 +316,7 @@ export function measureZone(zone, image, debug = false) {
     ? 0
     : groundCluster.pixels.filter((i) => Math.abs(lumaAt(image.D, i) - modalGroundLuma) < 0.02).length / groundCluster.pixels.length
 
-  const verdict = classify(onscreen, weakGroundShare)
+  const readability = classify(onscreen, weakGroundShare)
 
   let divergence = null
   if (declaredInk !== null) {
@@ -359,7 +352,7 @@ export function measureZone(zone, image, debug = false) {
     weakGroundShare,
     inkShare,
     separation: Math.abs(inkLuma - groundLuma),
-    verdict,
+    readability,
     divergence,
     declaredRatio: divergence === null ? null : divergence.declaredRatio,
     // The internals are behind --debug: they exist for the day a number looks wrong, and a
@@ -405,7 +398,7 @@ function sampleZone(zone, image) {
   for (let y = y0; y < y1; y += SAMPLE_STEP) {
     for (let x = x0; x < x1; x += SAMPLE_STEP) {
       const i = (y * W + x) * 4
-      if (D[i + 3] < 8) continue // fully transparent: not part of the delivered surface
+      if (D[i + 3] < 8) continue // fully transparent: not part of the composited surface
       px.push(i)
       if (x - x0 < ring || x1 - 1 - x < ring || y - y0 < ring || y1 - 1 - y < ring) borderPixels.push(i)
     }
@@ -564,12 +557,12 @@ function writeTable(zones, meta, quiet = false) {
   out.push(`在成品上量（${meta.image}  ${meta.canvas.width}x${meta.canvas.height}）`)
   for (const z of zones) {
     const label = String(z.label).padEnd(22)
-    if (z.verdict === 'empty') { out.push(`  ---- ${label} 区内没有不透明像素`); continue }
-    if (z.verdict === 'unresolved') {
+    if (z.readability === 'empty') { out.push(`  ---- ${label} 区内没有不透明像素`); continue }
+    if (z.readability === 'unresolved') {
       out.push(`  ???? ${label} ${z.note ?? 'could not resolve glyph from ground'}${z.groundHex === undefined ? '' : `（底 ${z.groundHex}）`}`)
       continue
     }
-    const flag = z.verdict === 'ok' ? 'ok  ' : z.verdict === 'warn' ? 'warn' : 'LOW '
+    const flag = z.readability === 'ok' ? 'ok  ' : z.readability === 'warn' ? 'warn' : 'LOW '
     const div = z.divergence === null || z.divergence.factor < DIVERGENCE_FACTOR
       ? ''
       : `  ⚠ 屏幕上的墨是 ${z.divergence.screenInk}，不是声明的 ${z.divergence.declaredInk}（${z.divergence.factor}×）`
@@ -636,15 +629,15 @@ const opts = parseArgs(process.argv.slice(2))
 if (opts.help) {
   process.stderr.write(
     'design check-render <png> [--report FILE.report.json] [--zones FILE.json] [--draw OUT.png] [--json] [--quiet]\n\n' +
-    '  Measures the text zones of a DELIVERED image: what is under the type, what the type\n' +
+    '  Measures the text zones of a rendered image: what is under the type, what the type\n' +
     '  measures against it, and whether the ink on screen is still the ink that was declared.\n\n' +
     '  --report  zones and declared inks taken from the render report (any scene, any size)\n' +
     '  --zones   {"zones":[{"label":"...","box":[x,y,w,h],"ink":"#RRGGBB"}]}\n' +
     '  --draw    write a copy with the zones marked, to look at\n' +
     '  --json    write the machine-readable result to stdout\n' +
     '  --debug   include the clustering internals, for when a number looks wrong\n\n' +
-    '  Exit status is non-zero when a zone is unreadable (LOW). `warn` is not a failure: it is\n' +
-    '  the band where a person should look, and failing on it would start forcing layouts.\n',
+    '  Exit status is non-zero when a zone measures LOW. `warn` is the band where a person\n' +
+    '  should look; it is reported, not acted on.\n',
   )
   process.exit(opts.image === null ? 1 : 0)
 }
@@ -700,16 +693,16 @@ if (measured.length > 0 && measured.every((z) => z.divergence === null)) {
 }
 
 const summary = {
-  ok: measured.every((z) => z.verdict !== 'LOW'),
+  ok: measured.every((z) => z.readability !== 'LOW'),
   image: pngPath,
   canvas: { width: W, height: H },
   measured: measured.length,
   counts: {
-    ok: measured.filter((z) => z.verdict === 'ok').length,
-    warn: measured.filter((z) => z.verdict === 'warn').length,
-    low: measured.filter((z) => z.verdict === 'LOW').length,
-    unresolved: measured.filter((z) => z.verdict === 'unresolved').length,
-    empty: measured.filter((z) => z.verdict === 'empty').length,
+    ok: measured.filter((z) => z.readability === 'ok').length,
+    warn: measured.filter((z) => z.readability === 'warn').length,
+    low: measured.filter((z) => z.readability === 'LOW').length,
+    unresolved: measured.filter((z) => z.readability === 'unresolved').length,
+    empty: measured.filter((z) => z.readability === 'empty').length,
   },
   divergences: measured.filter((z) => z.divergence !== null && z.divergence.factor >= DIVERGENCE_FACTOR).length,
   notes,
@@ -724,7 +717,7 @@ const summary = {
     label: z.label,
     box: z.box,
     source: z.source,
-    verdict: z.verdict,
+    readability: z.readability,
     fontSize: z.fontSize ?? null,
     families: z.families ?? [],
     fontFallback: z.fontFallback === true,
@@ -751,8 +744,9 @@ if (opts.draw !== null) {
 
 if (opts.json) process.stdout.write(JSON.stringify(summary, null, 2) + '\n')
 
-// Exit status follows the verdict, so a caller can gate on it without parsing: a `LOW` zone is
-// unreadable ground, which is a defect. `warn` is deliberately not a failure — it is the band
-// where a person should look, and a tool that fails on it would start forcing layouts.
+// Exit status follows the measurement, so a caller can branch on it without parsing: a `LOW` zone
+// means the ground under the type cannot hold small text. `warn` deliberately does not set it —
+// that is the band where a person should look, and treating it as a failure would start forcing
+// layouts on a measurement that only reports numbers.
 process.exit(summary.ok ? 0 : 1)
 }

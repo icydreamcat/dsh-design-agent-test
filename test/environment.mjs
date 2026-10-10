@@ -68,12 +68,12 @@ console.log('\n[2] fonts')
 
 // ── 3. render → measure, the loop the agent actually runs ────────────────────
 //
-// The scene is built here rather than loaded from `scenes/`, on purpose: most of the
-// example scenes reference photographs from the shared design library, which lives
-// beside the repository and is not versioned, so they are not portable. A test that
-// silently depends on them would pass on the machine that made them and fail on a
-// fresh clone. This scene is self-contained, and it exercises an image layer with a
-// fixture generated below, so the image path is covered too.
+// The scene and its image are generated here rather than committed, for two reasons.
+// A committed scene makes the suite assert a LAYOUT, so a change to the library's taste
+// turns it red for no reason; and a committed scene is the thing most likely to be
+// copied into new work, which is the opposite of what this agent is for. Generating it
+// keeps the assertions about the ENGINE, and keeps `render` + `analyze` covered end to
+// end — an image layer with a relative path included, so path resolution is exercised.
 console.log('\n[3] render and measure')
 const fixturePng = join(CACHE, 'fixture.png')
 {

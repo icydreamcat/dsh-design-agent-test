@@ -160,13 +160,6 @@ const INK_LUM = 0
 const circleScene = {
   canvas: { width: W, height: H },
   ground: GROUND,
-  gates: {
-    focus: 'one circle, nothing else — this is a sampling fixture, not a design',
-    lightAxis: 'none; a flat fill has no light',
-    layers: ['disc'],
-    drawingRule: 'one ellipse layer, radius in pixels, centre at fractional coordinates',
-    accentBand: [0, 0],
-  },
   layers: [
     {
       id: 'disc', shape: 'ellipse',
@@ -245,7 +238,6 @@ check('FEWER blend pixels whose edge the circle is not in (the polygon look)',
 {
   const bar = () => ({
     canvas: { width: W, height: H }, ground: GROUND,
-    gates: circleScene.gates,
     layers: [{
       id: 'bar', shape: 'rect', x: 30.25, y: 20.5, w: 90.4, h: 12.6, paint: INK,
       transform: { rotate: 7, originX: 30.25, originY: 20.5 },
@@ -292,7 +284,6 @@ console.log('\nthe contract for callers')
   // left inflated would disagree with the report that says what was delivered.
   const probe = {
     canvas: { width: W, height: H }, ground: GROUND,
-    gates: circleScene.gates,
     layers: [
       { id: 'a', shape: 'rect', x: 10, y: 10, w: 40, h: 40, paint: INK },
       { id: 'b', shape: 'rect', x: -5, y: 120, w: 30, h: 20, paint: INK },
@@ -339,11 +330,6 @@ console.log('\nthe ceiling')
   // a machine's limit fails on a bigger machine and passes for the wrong reason on a smaller one.
   const fixtureAt = (w, h) => ({
     canvas: { width: w, height: h }, ground: GROUND,
-    gates: {
-      focus: 'an over-budget probe', lightAxis: 'none',
-      layers: ['a', 'b'], drawingRule: 'two rectangles',
-      accentBand: [0, 0],
-    },
     layers: [
       { id: 'a', shape: 'rect', x: 0, y: 0, w: 1, h: 1, paint: GROUND },
       { id: 'b', shape: 'rect', x: 10, y: 10, w: 40, h: 40, paint: INK },

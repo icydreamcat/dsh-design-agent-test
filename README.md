@@ -33,8 +33,8 @@ node bootstrap.mjs --uninstall        # 摘掉声明（文件留着）
 引擎自己就能用，不必经过 dsh。每个子命令向 stdout 写**一个** JSON 对象，人读的说明写 stderr。
 
 ```powershell
-node bin/design.mjs render  scenes/poster-a-flat.json --out out --name draft
-node bin/design.mjs render  scenes/poster-a-flat.json --out out --name draft --psd --supersample 2
+node bin/design.mjs render  my-scene.json --out out --name draft
+node bin/design.mjs render  my-scene.json --out out --name draft --psd --supersample 2
 node bin/design.mjs analyze out/draft.png
 node bin/design.mjs palette presets
 node bin/design.mjs palette apply out/draft.png paper-grain --set strength=0.4
@@ -66,7 +66,7 @@ skills/                   8 份技能，按需加载
 
 ## scene 是什么
 
-一个声明式 JSON：画布、地面、一叠图层。
+一个声明式 JSON：画布、地面、一叠图层。**从空文件写起**，不要照抄任何现成的版面——引擎画什么由你决定。
 
 - **长度 ≤1 是画布比例，>1 是像素。** 所以「刚刚大于 1」是**一点几像素**；要出血的形状必须用像素写。
 - **线用 `x1,y1,x2,y2`**，不用 `x,y`。
@@ -74,7 +74,7 @@ skills/                   8 份技能，按需加载
 - 任何效果可以带 `scope`（限定作用区域），也可以换成 `{ graph: [...] }`（palette 算子链）。
 - 形状还能带**形状级 `tone`**，只在该形状自己的框内运行 —— 网点因此被限制在生成它的那个笔画里，不会溢出整个画面。
 
-`scenes/` 里的 11 个例子都能直接渲染，且**不依赖仓库外的任何素材**（用到的图在 `fixtures/`，由测试生成）。
+**怎么写**看技能，那里是文字形式的判断：先定唯一焦点与视线路径，再定栅格与尺度，最后才落元素。仓库里**不放示例场景**——一个现成的版面最容易被照着填，而抄走的是结果不是判断。
 
 ## 测试
 
@@ -85,6 +85,8 @@ node test/environment.mjs    # 端到端：CLI、字体、渲染→测量、工�
 
 产物写在仓库**旁边**的 `.cache/test/`，不落进仓库。
 
+测试**不读任何提交在仓库里的场景**：`test/_fixture.mjs` 按需生成一个，`environment.mjs` 自己再生成一个，所以套件断言的是引擎行为，而不是某个版面的样子。
+
 `environment.mjs` 值得单独说：它自己生成 fixture 和 scene，再用 CLI 走一遍「渲染 → 测量 → 读回数字」，然后检查两处最容易悄悄坏掉的集成面 —— agent 组合（每一行是否都能解析、本地模块是否可导入）与工具名册（每个工具是否真的能跑）。所以它在任何机器上都能给出同一个判定。
 
 ## 目录
@@ -93,10 +95,10 @@ node test/environment.mjs    # 端到端：CLI、字体、渲染→测量、工�
 bin/design.mjs      CLI 入口（唯一）
 src/                引擎：渲染、合成、文字、色彩、滤镜、效果、PSD、分析
 tools/              23 个测量与素材工具，各自独立可跑
-scenes/             11 个示例场景
-fixtures/           示例场景用的自带素材
 agent/              dsh preset：组合、纪律、工具注册
 skills/             8 份设计技能
 test/               15 个单元套件 + 端到端环境检查
 bootstrap.mjs       装进 dsh profile
 ```
+
+仓库里**没有示例版面**。设计指引全部在 `skills/`，以文字形式给出判断；版面由 agent 自己从空白场景开始写。
