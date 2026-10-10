@@ -136,10 +136,18 @@
 
 # ── context management ────────────────────────────────────────────────────────
 
+# `isolate` is a MAP keyed by service name, not a boolean. `isolate: true` isolates
+# nothing, so the rows below publish `compaction` and `toolResultPruner` into the root
+# realm — where they are process-global — and the mount is refused with
+# `Preset services require isolate realms: compaction, toolResultPruner`. The names are
+# the services the rows inside actually provide; adding a row that provides another
+# service means adding its name here too.
 - id: compaction
   name: cordis:group
   group: true
-  isolate: true
+  isolate:
+    compaction: true
+    toolResultPruner: true
   config:
     - id: compaction-basic
       name: '@deepseek-ai/dsh-compaction-basic'
@@ -153,7 +161,8 @@
 - id: delegation
   name: cordis:group
   group: true
-  isolate: true
+  isolate:
+    workflowEngine: true
   config:
     - id: tool-subagent-control
       name: '@deepseek-ai/dsh-tool-subagent-control'
