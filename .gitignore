@@ -1,0 +1,12 @@
+# Dependencies
+node_modules/
+
+# Render output. Renders are reproducible from a scene, so they are not versioned;
+# `.cache/` beside the repository is where the tests write their artefacts.
+out/
+.cache/
+
+# OS noise
+Thumbs.db
+Desktop.ini
+.DS_Store

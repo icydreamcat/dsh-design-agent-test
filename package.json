@@ -1,0 +1,21 @@
+{
+  "name": "dsh-design-agent-test",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "description": "测试用独立平面设计 agent：真实渲染引擎 + 测量工具链 + 设计规范与技能。",
+  "bin": {
+    "design": "bin/design.mjs"
+  },
+  "scripts": {
+    "render": "node bin/design.mjs render",
+    "bootstrap": "node bootstrap.mjs",
+    "check": "node bootstrap.mjs --check",
+    "test": "node test/run-all.mjs",
+    "test:env": "node test/environment.mjs",
+    "test:all": "node test/run-all.mjs && node test/environment.mjs"
+  },
+  "dependencies": {
+    "@napi-rs/canvas": "^1.0.9"
+  }
+}
