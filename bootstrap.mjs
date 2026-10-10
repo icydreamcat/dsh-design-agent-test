@@ -160,11 +160,17 @@ function resolveComposition(composition) {
     // the whole overlay. So the leading whitespace is captured from the match, not
     // written by hand.
     //
-    // The value is an ABSOLUTE path rather than the source's `homedir()` join: that join
-    // is right only when the repository was installed under its default name, so a clone
-    // running `--target` pointed at a directory that did not exist. Quoted with `"…"`
-    // because the harness home can contain an apostrophe.
-    text = text.replace(skillsRe, (_m, lead) => `${lead}!!js "${toFileUrl(join(STAGE, 'skills'))}"`)
+    // The value is written as a PLAIN QUOTED STRING, not as a `!!js` expression. The
+    // source uses `!!js` because it derives the path from `homedir()` at load time; by
+    // the time this runs the path is already known, so evaluating JavaScript at load
+    // time buys nothing and adds a way for the value to come back as something other
+    // than a string. A literal is one less thing to be wrong on the host that reads it.
+    //
+    // It is an ABSOLUTE path for the same reason: the source's `homedir()` join is right
+    // only when the repository was installed under its default name. Quoted with `"…"`
+    // because a path can contain an apostrophe (`ICED'R~1`), which inside a single-quoted
+    // YAML scalar would end the string and turn a path into a parse error.
+    text = text.replace(skillsRe, (_m, lead) => `${lead}"${toFileUrl(join(STAGE, 'skills'))}"`)
     done.push('customSkillDirs')
   } else if (text.includes(skillsLiteral.trim())) {
     done.push('customSkillDirs')
