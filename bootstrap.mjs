@@ -123,10 +123,21 @@ function buildBlock(composition, meta) {
 }
 
 /**
- * Rewrite the two machine-specific values in the composition.
+ * Rewrite the machine-specific values in the composition.
  *
- * `engineDir` arrives as PLACEHOLDER_ENGINE_DIR and the local modules as `./x.mjs`;
- * both are replaced with paths that are correct for this machine and this checkout.
+ * Three of them, all for the same reason: none works from a relative row.
+ *
+ *   the two local modules   `./x.mjs` resolves against the composition's `baseUrl`,
+ *                           which in the desktop host is the PROFILE directory.
+ *   `customSkillDirs`       the source anchors it on the harness home, which is right
+ *                           only when this repository was installed to its default
+ *                           name — a clone running `--target`, or an install under any
+ *                           other name, would point at a directory that is not there.
+ *   `engineDir`             this checkout's real path, the one value that genuinely
+ *                           differs per machine.
+ *
+ * All three become absolute paths under `STAGE`, so the deployed composition depends on
+ * nothing but where it was actually installed.
  */
 function resolveComposition(composition) {
   let text = composition
@@ -138,11 +149,21 @@ function resolveComposition(composition) {
     if (re.test(text)) { text = text.replace(re, `$1"${url}"`); done.push(file) }
   }
 
-  const skills = toFileUrl(join(STAGE, 'skills'))
-  const skillsRe = /^(\s*-\s*)!!js\s+"process\.getBuiltinModule\('node:path'\)\.join\(process\.getBuiltinModule\('node:os'\)\.homedir\(\),\s*'\.dsh',\s*'design-agent-test',\s*'skills'\)"\s*$/m
+  // Match the source literal whatever directory name it names, then write the real one.
+  const skillsRe = /^(\s*-\s*)!!js\s+"process\.getBuiltinModule\('node:path'\)\.join\(process\.getBuiltinModule\('node:os'\)\.homedir\(\),\s*'\.dsh',\s*'[^']+',\s*'skills'\)"\s*$/m
   const skillsLiteral = `      - !!js "process.getBuiltinModule('node:path').join(process.getBuiltinModule('node:os').homedir(), '.dsh', '${STAGE_DIRNAME}', 'skills')"`
   if (skillsRe.test(text)) {
-    text = text.replace(skillsRe, skillsLiteral)
+    // Keep EXACTLY the source line's own indentation: this replacement sits inside a
+    // `customSkillDirs:` list, and hard-coding six spaces produced a line that did not
+    // line up with its neighbours — `bad indentation of a sequence entry`, which fails
+    // the whole overlay. So the leading whitespace is captured from the match, not
+    // written by hand.
+    //
+    // The value is an ABSOLUTE path rather than the source's `homedir()` join: that join
+    // is right only when the repository was installed under its default name, so a clone
+    // running `--target` pointed at a directory that did not exist. Quoted with `"…"`
+    // because the harness home can contain an apostrophe.
+    text = text.replace(skillsRe, (_m, lead) => `${lead}!!js "${toFileUrl(join(STAGE, 'skills'))}"`)
     done.push('customSkillDirs')
   } else if (text.includes(skillsLiteral.trim())) {
     done.push('customSkillDirs')
