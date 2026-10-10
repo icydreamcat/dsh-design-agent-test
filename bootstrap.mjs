@@ -39,7 +39,7 @@
 import { readFile, writeFile, mkdir, readdir, copyFile, rm } from 'node:fs/promises'
 import { existsSync } from 'node:fs'
 import { randomBytes } from 'node:crypto'
-import { dirname, join, relative, sep } from 'node:path'
+import { dirname, join, relative, resolve, sep } from 'node:path'
 import { homedir } from 'node:os'
 
 const REPO = import.meta.dirname
@@ -68,6 +68,7 @@ const PATCH = join(HARNESS_HOME, 'profiles', PROFILE, 'cordis.patch.yml')
 const STAGE = value('--target', join(HARNESS_HOME, STAGE_DIRNAME))
 const CHECK = flag('--check')
 const UNINSTALL = flag('--uninstall')
+const FORCE_TARGET = flag('--force-target')
 
 const slash = (p) => p.split(sep).join('/')
 const toFileUrl = (p) => 'file:///' + slash(p).replace(/^\/+/, '')
@@ -226,6 +227,28 @@ console.log(`           profile ${PROFILE}`)
 console.log(`           patch   ${PATCH}`)
 console.log(`           stage   ${STAGE}`)
 console.log(`           mode    ${CHECK ? 'check' : UNINSTALL ? 'uninstall' : 'install'}\n`)
+
+// A `--target` outside the deployment home would put a path into the REAL profile's
+// patch that points at a directory someone is about to delete. The install then looks
+// mounted to `--check` and is dead at the next restart, which is a confusing way to
+// discover a test artefact. Refuse unless the caller says it means it.
+//
+// The check is on the resolved path, so `--target ../foo` is caught as well as
+// `--target %TEMP%\x`, and it applies only to a run that WRITES (`--check` is read-only
+// and is the safe way to inspect an out-of-tree stage).
+const DEFAULT_STAGE = join(HARNESS_HOME, STAGE_DIRNAME)
+if (!CHECK && !UNINSTALL && resolve(STAGE) !== resolve(DEFAULT_STAGE) && !FORCE_TARGET) {
+  console.error(`bootstrap: refusing to point the "${PROFILE}" profile at a non-default stage.`)
+  console.error(`           profile patch : ${PATCH}`)
+  console.error(`           would declare : ${STAGE}`)
+  console.error(`           default stage : ${DEFAULT_STAGE}`)
+  if (!existsSync(STAGE)) console.error('           note          : that directory does not exist')
+  console.error('')
+  console.error('           The profile is shared state: a declaration pointing at a temporary')
+  console.error('           directory breaks the agent as soon as that directory is removed.')
+  console.error('           Pass --force-target if you really mean to install there.')
+  process.exit(3)
+}
 
 const compositionPath = join(REPO, 'agent', 'agent.cordis.yml')
 if (!existsSync(compositionPath)) {

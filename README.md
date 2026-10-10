@@ -19,6 +19,10 @@ node bootstrap.mjs --profile web      # 装到别的 profile
 node bootstrap.mjs --uninstall        # 摘掉声明（文件留着）
 ```
 
+`--check` 覆盖四处漂移：文件内容、profile 声明、部署副本里的组合、引擎指针。任一不同即退出码 1。
+
+`--target DIR` 把文件装到别处、同时让声明指向那里——**仅供试验**。默认拒绝，因为声明写进的是**共享的 profile**：指向一个临时目录，目录一删 agent 就挂，而 `--check` 那时仍会说「同步」。确实要这么装时加 `--force-target`。
+
 > **`engineDir` 是唯一随机器变化的路径。** 仓库里的 `agent/agent.cordis.yml` 写的是占位符
 > `PLACEHOLDER_ENGINE_DIR`，由 `bootstrap.mjs` 在安装时替换成本机的真实路径。同理，两个本地
 > 插件行（`design-policy.mjs`、`design-tools.mjs`）在安装时被写成 `file://` URL —— 这一形态是
