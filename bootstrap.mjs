@@ -171,9 +171,14 @@ function resolveComposition(composition) {
 
   // The engine IS this repository: `bin/`, `src/` and `tools/` sit at its root, and
   // `engineDir` is the directory the design-tools row spawns `bin/design.mjs` from.
+  //
+  // Quoted with `"…"` and not `'…'`: a path can contain an apostrophe (a Windows short
+  // name like `ICED'R~1` is exactly that), and inside a single-quoted YAML scalar that
+  // apostrophe ends the string — producing `engineDir: 'C:/Users/ICED'R~1/…'`, which is
+  // a parse error rather than a wrong path. Double quotes tolerate it.
   const engine = slash(REPO)
   if (text.includes('PLACEHOLDER_ENGINE_DIR')) {
-    text = text.replace(/^(\s*engineDir:\s*)'PLACEHOLDER_ENGINE_DIR'\s*$/m, `$1'${engine}'`)
+    text = text.replace(/^(\s*engineDir:\s*)['"]PLACEHOLDER_ENGINE_DIR['"]\s*$/m, `$1"${engine}"`)
     done.push(`engineDir -> ${engine}`)
   }
 
@@ -239,10 +244,16 @@ const problems = []
 if (unresolved.length > 0) problems.push(`composition still contains a placeholder: ${unresolved.join(', ')}`)
 
 // 1. the files
+//
+//    `agent.cordis.yml` is deliberately NOT copied here: it is written in step 2 in its
+//    RESOLVED form. Copying the source version first would be overwritten immediately,
+//    and worse, comparing the source against a resolved destination would report drift
+//    on every run — the copy loop and the resolve step would disagree forever.
 const srcFiles = (await listFiles(join(REPO, 'agent'))).sort()
 const skillsFiles = (await listFiles(join(REPO, 'skills'))).sort()
 let copied = 0
 for (const rel of [...srcFiles.map((r) => `agent/${r}`), ...skillsFiles.map((r) => `skills/${r}`)]) {
+  if (rel === 'agent/agent.cordis.yml') continue
   const from = join(REPO, rel)
   const to = join(STAGE, rel)
   let same = false
@@ -255,7 +266,28 @@ for (const rel of [...srcFiles.map((r) => `agent/${r}`), ...skillsFiles.map((r) 
   }
 }
 
-// 2. the pointer file, so a deployed copy with no checkout above it can still find
+// 2. the deployed composition, with the machine-specific values already resolved.
+//
+//    The copy above brings the composition over in its SOURCE form, which still holds
+//    PLACEHOLDER_ENGINE_DIR and the relative `./x.mjs` rows. Those only work after the
+//    profile patch is written, so on their own they describe an install that cannot
+//    load — and `--uninstall` removes the patch, leaving a stage whose composition is
+//    broken. Writing the resolved text makes the staged copy a complete artifact: the
+//    patch is what dsh reads, but the copy on disk is now correct by itself.
+const deployedComposition = join(STAGE, 'agent', 'agent.cordis.yml')
+let compositionChanged = false
+if (!CHECK && !UNINSTALL) {
+  let current = null
+  try { current = await readFile(deployedComposition, 'utf8') } catch { /* absent */ }
+  if (current !== resolved) { await mkdir(dirname(deployedComposition), { recursive: true }); await writeFile(deployedComposition, resolved, 'utf8'); compositionChanged = true }
+} else {
+  let current = null
+  try { current = await readFile(deployedComposition, 'utf8') } catch { /* absent */ }
+  compositionChanged = current !== resolved
+}
+if (compositionChanged) console.log(`  · wrote agent/agent.cordis.yml (resolved for this machine)`)
+
+// 3. the pointer file, so a deployed copy with no checkout above it can still find
 //    the engine even if the composition row is edited by hand
 const pointerPath = join(STAGE, 'agent', 'engine-path.txt')
 const enginePath = slash(REPO)
@@ -265,10 +297,14 @@ if (!CHECK && !UNINSTALL) {
   let current = null
   try { current = (await readFile(pointerPath, 'utf8')).trim() } catch { /* absent */ }
   if (current !== enginePath) { await writeFile(pointerPath, enginePath + '\n', 'utf8'); pointerChanged = true }
+} else {
+  let current = null
+  try { current = (await readFile(pointerPath, 'utf8')).trim() } catch { /* absent */ }
+  pointerChanged = current !== enginePath
 }
-if (pointerChanged) console.log(`  · wrote engine-path.txt -> ${enginePath}`)
+if (pointerChanged && !CHECK && !UNINSTALL) console.log(`  · wrote engine-path.txt -> ${enginePath}`)
 
-// 3. the declaration
+// 4. the declaration
 let patchText = ''
 try { patchText = await readFile(PATCH, 'utf8') } catch { patchText = '' }
 const block = buildBlock(resolved, meta)
@@ -283,11 +319,22 @@ if (!CHECK && changed) {
 }
 
 console.log(`\n  files ${copied} to copy, declaration ${changed ? 'changed' : 'already in sync'}`)
+if (compositionChanged) console.log(`  deployed composition ${CHECK ? 'is out of date' : 'updated'}`)
+if (pointerChanged) console.log(`  engine pointer ${CHECK ? 'is out of date' : 'updated'}`)
 if (problems.length > 0) for (const p of problems) console.log(`  ! ${p}`)
 
 if (CHECK) {
-  const drift = copied > 0 || changed
-  console.log(`\nverdict: ${problems.length > 0 ? 'FAILED — source unusable (exit 2)' : drift ? `DRIFT — ${copied} file(s), declaration ${changed ? 'not in sync' : 'ok'} (exit 1)` : 'in sync (exit 0)'}`)
+  // Drift is ANY of the three, not just the declaration: a stage holding a stale
+  // composition or a pointer at another checkout is a broken install that the patch
+  // alone would not reveal.
+  const drift = copied > 0 || changed || compositionChanged || pointerChanged
+  const why = [
+    copied > 0 ? `${copied} file(s)` : null,
+    changed ? 'declaration not in sync' : null,
+    compositionChanged ? 'deployed composition not in sync' : null,
+    pointerChanged ? 'engine pointer not in sync' : null,
+  ].filter(Boolean).join(', ')
+  console.log(`\nverdict: ${problems.length > 0 ? 'FAILED — source unusable (exit 2)' : drift ? `DRIFT — ${why} (exit 1)` : 'in sync (exit 0)'}`)
   process.exit(problems.length > 0 ? 2 : drift ? 1 : 0)
 }
 
